@@ -126,6 +126,12 @@ jobs:
               return;
             }
 
+            // Replace, don't pile up: remove this bot's inline comments from earlier pushes.
+            const old = await github.paginate(github.rest.pulls.listReviewComments, { owner, repo, pull_number, per_page: 100 });
+            for (const c of old.filter((c) => c.user?.type === 'Bot' && c.body?.includes(marker))) {
+              try { await github.rest.pulls.deleteReviewComment({ owner, repo, comment_id: c.id }); } catch (e) { core.warning(`Could not delete comment ${c.id}: ${e.message}`); }
+            }
+
             const body = `${marker}\n**Modern Web Guidance review bot** left ${comments.length} inline comment${comments.length === 1 ? '' : 's'}. The score and full list are in the summary comment.`;
             try {
               await github.rest.pulls.createReview({ owner, repo, pull_number, commit_id, event: 'COMMENT', body, comments });
