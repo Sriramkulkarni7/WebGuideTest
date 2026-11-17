@@ -172,3 +172,8 @@ dialog h2 { margin-top: 0; }
 @media (prefers-reduced-motion: reduce) {
   .toast { transition: none; }
 }
+
+.newsletter { margin-top: 2rem; padding: 16px; border: 1px solid #ccc; }
+.nl-heading { font-size: 22px; font-weight: bold; }
+.nl-btn { display: inline-block; padding: 8px 16px; background: #0b6e4f; color: #fff; cursor: pointer; }
+.nl-btn:focus { outline: none; }

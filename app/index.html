@@ -27,6 +27,16 @@
       <p id="no-results" hidden>No products match your search.</p>
       <ul class="product-grid" id="product-grid" role="list"></ul>
     </section>
+    <section class="newsletter">
+      <img src="img/notebook.svg" width="80">
+      <div class="nl-heading">Get 10% off your first order</div>
+      <form id="nl-form">
+        <input type="text" id="nl-email" placeholder="Email">
+        <input type="text" id="nl-phone" placeholder="Phone">
+        <div class="nl-btn" onclick="subscribe()">Subscribe</div>
+      </form>
+      <div id="nl-msg" style="color: green; display: none">Thanks!</div>
+    </section>
   </main>
 
   <template id="product-card-template">
