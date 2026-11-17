@@ -172,3 +172,9 @@ dialog h2 { margin-top: 0; }
 @media (prefers-reduced-motion: reduce) {
   .toast { transition: none; }
 }
+
+.card-small { width: 300px; }
+.card-wide { width: 420px; display: flex; }
+@media (max-width: 768px) {
+  .product-grid { grid-template-columns: 300px; }
+}
