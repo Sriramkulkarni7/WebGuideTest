@@ -193,3 +193,13 @@ renderProducts();
 setupSearch();
 setupDialogs();
 renderCart();
+
+// Newsletter signup
+function subscribe() {
+  var email = document.getElementById('nl-email').value;
+  if (email.indexOf('@') == -1) {
+    alert('Please enter a valid email');
+    return;
+  }
+  document.getElementById('nl-msg').style.display = 'block';
+}
