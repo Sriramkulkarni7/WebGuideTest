@@ -34,9 +34,13 @@ jobs:
         continue-on-error: true
         env:
           BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git diff "origin/${BASE_REF}...HEAD" > diff.txt
+            # Diff the PR head itself (not the merge commit) so line numbers match
+            # what GitHub shows, which inline review comments require.
+            git diff "${BASE_SHA}...${HEAD_SHA}" > diff.txt
           else
             # Manual run: compare the current branch against the default branch,
             # or the last commit if we are already on it.
@@ -54,6 +58,12 @@ jobs:
           fi
           echo "Scan size: $(wc -c < scan.json) bytes"
 
+      - name: Fetch the Modern Web Guidance guide list
+        continue-on-error: true
+        run: |
+          npx -y modern-web-guidance@latest list > guides.json || : > guides.json
+          echo "Guide list size: $(wc -c < guides.json) bytes"
+
       - name: Run the judge
         continue-on-error: true
         env:
@@ -61,6 +71,7 @@ jobs:
           GROQ_MODEL: ${{ vars.GROQ_MODEL }}
           DIFF_FILE: diff.txt
           SCAN_FILE: scan.json
+          GUIDES_FILE: guides.json
         run: node scripts/review.mjs
 
       - name: Post or update the PR comment
@@ -86,6 +97,48 @@ jobs:
             } else {
               const { data } = await github.rest.issues.createComment({ owner, repo, issue_number, body });
               core.info(`Created comment ${data.id}`);
+            }
+
+      - name: Post inline review comments
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comments = [];
+            try { comments = JSON.parse(fs.readFileSync('review-comments.json', 'utf8')); } catch {}
+            if (!Array.isArray(comments) || comments.length === 0) {
+              core.info('No inline comments to post.');
+              return;
+            }
+
+            const marker = '<!-- mwg-review-bot -->';
+            const { owner, repo } = context.repo;
+            const pull_number = context.issue.number;
+            const commit_id = context.payload.pull_request.head.sha;
+
+            // A re-run on the same commit should not post the same comments twice.
+            const reviews = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number, per_page: 100 });
+            if (reviews.some((r) => r.user?.type === 'Bot' && r.commit_id === commit_id && r.body?.includes(marker))) {
+              core.info('Inline review already posted for this commit; skipping.');
+              return;
+            }
+
+            const body = `${marker}\n**Modern Web Guidance review bot** left ${comments.length} inline comment${comments.length === 1 ? '' : 's'}. The score and full list are in the summary comment.`;
+            try {
+              await github.rest.pulls.createReview({ owner, repo, pull_number, commit_id, event: 'COMMENT', body, comments });
+              core.info(`Posted a review with ${comments.length} inline comments.`);
+            } catch (error) {
+              // If GitHub rejects one line, the whole review fails; fall back to posting them one by one.
+              core.warning(`Batch review failed (${error.message}); posting comments individually.`);
+              for (const c of comments) {
+                try {
+                  await github.rest.pulls.createReviewComment({ owner, repo, pull_number, commit_id, ...c });
+                } catch (e) {
+                  core.warning(`Skipped ${c.path}:${c.line}: ${e.message}`);
+                }
+              }
             }
 
       - name: Show the review in the job summary

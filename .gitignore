@@ -8,3 +8,7 @@ node_modules/
 diff.txt
 scan.json
 review-output.md
+
+# Inline review artifacts
+review-comments.json
+guides.json
