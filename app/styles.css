@@ -172,3 +172,22 @@ dialog h2 { margin-top: 0; }
 @media (prefers-reduced-motion: reduce) {
   .toast { transition: none; }
 }
+
+/* Fancy effects */
+.card {
+  anchor-name: --card;
+  animation: reveal linear both;
+  animation-timeline: view();
+  animation-range: entry 0% cover 30%;
+}
+@keyframes reveal { from { opacity: 0; translate: 0 2rem; } }
+
+.price {
+  position: absolute;
+  position-anchor: --card;
+  top: anchor(top);
+  right: anchor(right);
+}
+
+.cart-button { interpolate-size: allow-keywords; transition: width 0.3s; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.4s; }

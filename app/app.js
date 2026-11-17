@@ -193,3 +193,8 @@ renderProducts();
 setupSearch();
 setupDialogs();
 renderCart();
+
+// Animate the search filter with a view transition
+document.getElementById('search-input').addEventListener('input', () => {
+  document.startViewTransition(() => {});
+});
