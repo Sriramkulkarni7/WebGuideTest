@@ -1,0 +1,93 @@
+name: Modern Web Guidance review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: mwg-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: MWG review (warn-only)
+    runs-on: ubuntu-latest
+    # Warn-only: the bot must never fail the pull request check.
+    continue-on-error: true
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Get the PR diff
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff "origin/${BASE_REF}...HEAD" > diff.txt
+          else
+            # Manual run: compare the current branch against the default branch,
+            # or the last commit if we are already on it.
+            git diff "origin/${BASE_REF}...HEAD" > diff.txt
+            if [ ! -s diff.txt ]; then git diff HEAD~1 HEAD > diff.txt || true; fi
+          fi
+          echo "Diff size: $(wc -c < diff.txt) bytes"
+
+      - name: Run Modern Web Guidance legacy-scan
+        continue-on-error: true
+        run: |
+          if ! npx -y modern-web-guidance@latest legacy-scan . --json > scan.json; then
+            echo "legacy-scan failed; continuing with an empty scan."
+            : > scan.json
+          fi
+          echo "Scan size: $(wc -c < scan.json) bytes"
+
+      - name: Run the judge
+        continue-on-error: true
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DIFF_FILE: diff.txt
+          SCAN_FILE: scan.json
+        run: node scripts/review.mjs
+
+      - name: Post or update the PR comment
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- mwg-review-bot -->';
+            let review = 'The review bot produced no output.';
+            try { review = fs.readFileSync('review-output.md', 'utf8'); } catch {}
+            const body = `${marker}\n### Modern Web Guidance review bot\n\n${review}\n\n<sub>Warn-only: this review never blocks merging.</sub>`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const existing = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              core.info(`Updated comment ${existing.id}`);
+            } else {
+              const { data } = await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              core.info(`Created comment ${data.id}`);
+            }
+
+      - name: Show the review in the job summary
+        if: always()
+        run: |
+          if [ -f review-output.md ]; then cat review-output.md >> "$GITHUB_STEP_SUMMARY"; fi
