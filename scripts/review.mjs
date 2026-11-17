@@ -56,7 +56,7 @@ Reply with a single JSON object and nothing else, in this shape:
       "guide": "<the most relevant Modern Web Guidance guide id from the provided list>",
       "title": "<short imperative title, e.g. use native disclosure>",
       "problem": "<what is wrong and why it matters, 1-2 sentences>",
-      "fix": "<what to do instead, 1-3 sentences; inline code in backticks is welcome>"
+      "fix": "<what to do instead, 1-3 sentences; always wrap HTML, CSS and JS code in backticks>"
     }
   ],
   "good": ["<at most 3 short points about the changed lines>"]
@@ -179,13 +179,21 @@ function renderSummary({ score, findings, good }, model) {
     lines.push('No issues found.');
   } else {
     for (const f of findings) {
-      lines.push(`- [severity: ${f.severity}] ${f.file}:${f.line} - ${oneLine(f.problem || f.title)} - ${oneLine(f.fix)}`);
+      lines.push(`- [severity: ${f.severity}] ${f.file}:${f.line} - ${codeifyTags(oneLine(f.problem || f.title))} - ${codeifyTags(oneLine(f.fix))}`);
     }
   }
   lines.push('', '## What looks good');
   lines.push(...(good.length ? good.map((g) => `- ${oneLine(g)}`) : ['- Nothing specific to call out.']));
   lines.push('', `<sub>Judge model: ${model}</sub>`);
   return lines.join('\n');
+}
+
+/** GitHub drops raw HTML tags from comments; wrap any tag that is not already in backticks as code. */
+function codeifyTags(text) {
+  return text
+    .split(/(`[^`]*`)/)
+    .map((part, i) => (i % 2 ? part : part.replace(/<\/?[a-zA-Z][^<>]*>/g, (tag) => `\`${tag}\``)))
+    .join('');
 }
 
 function renderInlineBody(f, knownGuides) {
@@ -197,9 +205,9 @@ function renderInlineBody(f, knownGuides) {
     '',
     `${SEVERITY_LABEL[f.severity]} severity`,
     '',
-    f.problem,
+    codeifyTags(f.problem),
     '',
-    f.fix,
+    codeifyTags(f.fix),
   ];
   if (guide) parts.push('', `<sub>Modern Web Guidance review bot · read the guide: \`npx modern-web-guidance retrieve ${guide}\`</sub>`);
   return parts.join('\n').replace(/\n{3,}/g, '\n\n');

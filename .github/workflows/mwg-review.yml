@@ -25,10 +25,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Node 20
+      # modern-web-guidance requires Node.js >= 22; on Node 20 legacy-scan exits before scanning.
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Get the PR diff
         continue-on-error: true

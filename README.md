@@ -55,7 +55,7 @@ DIFF_FILE=diff.txt SCAN_FILE=scan.json GROQ_API_KEY=your_key node scripts/review
 cat review-output.md
 ```
 
-Requires Node 18 or newer (for built-in `fetch`).
+Requires Node 22 or newer (`modern-web-guidance` needs it; the judge itself only needs Node 18+).
 
 ## Adding the GROQ_API_KEY secret
 
