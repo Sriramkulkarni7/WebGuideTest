@@ -7,7 +7,19 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 const OUTPUT_FILE = 'review-output.md';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+const MODELS_URL = 'https://api.groq.com/openai/v1/models';
+// Groq retires models over time. Try these in order, skipping any that are not available.
+// Set the GROQ_MODEL repo variable to force a specific model.
+const PREFERRED_MODELS = [
+  process.env.GROQ_MODEL,
+  'llama-3.3-70b-versatile',
+  'openai/gpt-oss-120b',
+  'meta-llama/llama-4-maverick-17b-128e-instruct',
+  'moonshotai/kimi-k2-instruct',
+  'qwen/qwen3-32b',
+].filter(Boolean);
+// Models that are not general chat models (speech, safety classifiers, agents).
+const NON_CHAT = /whisper|tts|orpheus|guard|safeguard|compound|playai|distil/i;
 const MAX_DIFF_CHARS = 60_000; // keep the request inside the model's context window
 const MAX_SCAN_CHARS = 20_000;
 
@@ -75,27 +87,72 @@ async function callJudge(diff, scan) {
     '```',
   ].join('\n');
 
+  const candidates = await pickModels(apiKey);
+  let lastError;
+  for (const model of candidates) {
+    try {
+      const reply = await chat(apiKey, model, userMessage);
+      console.log(`Judge model: ${model}`);
+      return `${reply}
+
+<sub>Judge model: ${model}</sub>`;
+    } catch (error) {
+      lastError = error;
+      // Only move on to the next model when this one is missing; other errors are real failures.
+      if (!error.modelMissing) throw error;
+      console.error(`Model ${model} unavailable, trying the next one.`);
+    }
+  }
+  throw lastError ?? new Error('No Groq chat model is available for this key.');
+}
+
+/** Preferred models that this key can use, followed by any other available chat model. */
+async function pickModels(apiKey) {
+  try {
+    const response = await fetch(MODELS_URL, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return PREFERRED_MODELS;
+    const { data = [] } = await response.json();
+    const available = data
+      .filter((m) => m.active !== false && !NON_CHAT.test(m.id))
+      .sort((a, b) => (b.context_window ?? 0) - (a.context_window ?? 0))
+      .map((m) => m.id);
+    const preferred = PREFERRED_MODELS.filter((id) => available.includes(id));
+    const rest = available.filter((id) => !preferred.includes(id));
+    return preferred.length || rest.length ? [...preferred, ...rest].slice(0, 5) : PREFERRED_MODELS;
+  } catch {
+    return PREFERRED_MODELS; // listing failed: fall back to trying the preferred list directly
+  }
+}
+
+async function chat(apiKey, model, userMessage) {
   const response = await fetch(GROQ_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       temperature: 0.1,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userMessage },
       ],
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(90_000),
   });
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Groq API returned ${response.status} ${response.statusText}: ${body.slice(0, 500)}`);
+    const error = new Error(`Groq API returned ${response.status} ${response.statusText}: ${body.slice(0, 500)}`);
+    error.modelMissing = response.status === 404 || /model_not_found|model_decommissioned/.test(body);
+    throw error;
   }
 
   const data = await response.json();
-  const reply = data?.choices?.[0]?.message?.content?.trim();
+  const content = data?.choices?.[0]?.message?.content ?? '';
+  // Some reasoning models wrap their thinking in <think> tags; keep only the verdict.
+  const reply = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   if (!reply) throw new Error('Groq API returned an empty reply.');
   return reply;
 }

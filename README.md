@@ -32,14 +32,14 @@ How it is built:
 
 ```
 pull request ──► git diff vs base ──► diff.txt ─┐
-                                                ├─► scripts/review.mjs ──► Groq (llama-3.3-70b-versatile) ──► review-output.md ──► PR comment
+                                                ├─► scripts/review.mjs ──► Groq (best available model) ──► review-output.md ──► PR comment
 repo ──► modern-web-guidance legacy-scan ──► scan.json ─┘
 ```
 
 1. On every pull request (opened, synchronize, reopened), or when started by hand, `.github/workflows/mwg-review.yml` checks out the PR with full history.
 2. It writes the PR diff to `diff.txt` with `git diff origin/<base>...HEAD`.
 3. It runs `npx -y modern-web-guidance@latest legacy-scan . --json > scan.json`. If the scan fails, the bot carries on with an empty scan.
-4. `scripts/review.mjs` sends the diff and the scan to the Groq API. The model is told to:
+4. `scripts/review.mjs` sends the diff and the scan to the Groq API. It prefers `llama-3.3-70b-versatile`; if Groq has retired that model it asks Groq which models are available and uses the next best one (set a `GROQ_MODEL` repository variable to force one). The model is told to:
    - judge only the changed lines,
    - treat the legacy-scan findings as ground truth,
    - check for legacy patterns, non-Baseline features with no fallback, missing feature detection, accessibility problems and heavy JavaScript the browser can now replace,

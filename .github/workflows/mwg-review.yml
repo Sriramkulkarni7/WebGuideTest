@@ -58,6 +58,7 @@ jobs:
         continue-on-error: true
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
           DIFF_FILE: diff.txt
           SCAN_FILE: scan.json
         run: node scripts/review.mjs
